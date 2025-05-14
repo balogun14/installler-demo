@@ -1,13 +1,10 @@
 ﻿<Window x:Class="authtest.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:authtest"
-        mc:Ignorable="d"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         Title="MainWindow" Height="450" Width="800">
     <Grid>
-        <Button Content="Start Auth" HorizontalAlignment="Left" Height="101" Margin="281,157,0,0" VerticalAlignment="Top" Width="210" BorderBrush="#FFCE1212" Background="#FFE43737" Click="SignInButton_Click"/>
-
+        <wv2:WebView2 x:Name="WebView" Visibility="Visible"/>
+        <Button Content="Sign In" Click="SignInButton_Click" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="10"/>
     </Grid>
 </Window>

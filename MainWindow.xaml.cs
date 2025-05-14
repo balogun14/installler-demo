@@ -1,58 +1,89 @@
-﻿using System.Net.Http;
+﻿using System.Net;
 using System.Net.Http.Json;
-using System.Text;
 using System.Text.Json;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
+using System.Security.Cryptography;
+using System.Net.Http;
+using System.Net.Sockets;
 
 namespace authtest
 {
-    /// <summary>
-    /// Interaction logic for MainWindow.xaml
-    /// </summary>
     public partial class MainWindow : Window
     {
+        private readonly HttpClient _client = new();
+        private const string ApiBaseUrl = "http://localhost:13255"; // Replace with your API URL
+
         public MainWindow()
         {
             InitializeComponent();
         }
-        private readonly HttpClient _client = new HttpClient();
-        private const string ApiBaseUrl = "http://localhost:13255"; // Replace with your API URL
 
         private async void SignInButton_Click(object sender, RoutedEventArgs e)
         {
             try
             {
-                // Step 1: Get OAuth URL from google-signin
-                var DeviceId = Guid.NewGuid();
-                var response = await _client.GetAsync($"{ApiBaseUrl}/api/InstallerAuth/google-signin?deviceId={DeviceId}");
+                // Step 1: Get a random unused port for redirect URI
+                var port = GetRandomUnusedPort();
+                var redirectUri = $"http://127.0.0.1:{port}/";
+                var deviceId = Guid.NewGuid().ToString();
+
+                // Step 2: Call google-signin endpoint
+                var response = await _client.GetAsync($"{ApiBaseUrl}/api/InstallerAuth/google-signin?deviceId={deviceId}&redirectUri={Uri.EscapeDataString(redirectUri)}");
                 var json = await response.Content.ReadAsStringAsync();
                 var result = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
                 var authUrl = result["authorizationUrl"];
+                var codeVerifier = result["codeVerifier"];
+                var returnedRedirectUri = result["redirectUri"];
 
-                // Step 2: Open browser
+                // Step 3: Start HttpListener to capture redirect
+                var http = new HttpListener();
+                http.Prefixes.Add(redirectUri);
+                http.Start();
+
+                // Step 4: Open browser
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(authUrl) { UseShellExecute = true });
 
-                // Step 3: Prompt user to paste the code
-                var code = Microsoft.VisualBasic.Interaction.InputBox("Enter the Google authorization code:", "Google Sign-In");
-                if (string.IsNullOrEmpty(code)) return;
+                // Step 5: Wait for OAuth redirect
+                var context = await http.GetContextAsync();
+                this.Activate(); // Bring app to foreground
 
-                // Step 4: Send code and state to google-callback
-                var state = JsonSerializer.Serialize(new { guid = Guid.NewGuid().ToString(), deviceId = DeviceId.ToString() }); // Use same state as in google-signin
+                // Step 6: Send response to browser
+                var responseString = "<html><body>Please return to the app.</body></html>";
+                var buffer = System.Text.Encoding.UTF8.GetBytes(responseString);
+                var httpResponse = context.Response; 
+                httpResponse.ContentLength64 = buffer.Length; // Set ContentLength64 on HttpListenerResponse
+                await httpResponse.OutputStream.WriteAsync(buffer, 0, buffer.Length); // Write to OutputStream of HttpListenerResponse
+                httpResponse.OutputStream.Close(); // Close the OutputStream
+                http.Stop();
+
+                // Step 7: Extract code and state
+                var query = context.Request.QueryString;
+                if (query["error"] != null)
+                {
+                    MessageBox.Show($"OAuth error: {query["error"]}");
+                    return;
+                }
+                if (query["code"] == null || query["state"] == null)
+                {
+                    MessageBox.Show("Malformed authorization response");
+                    return;
+                }
+
+                var code = query["code"];
+                var state = query["state"];
+
+                // Step 8: Call google-callback endpoint
                 var callbackResponse = await _client.PostAsJsonAsync($"{ApiBaseUrl}/api/InstallerAuth/google-callback", new
                 {
                     Code = code,
-                    State = state
+                    State = state,
+                    CodeVerifier = codeVerifier,
+                    RedirectUri = returnedRedirectUri 
                 });
+                //TODO: Fix the parsing of token
 
                 var authResult = JsonSerializer.Deserialize<AuthResult>(await callbackResponse.Content.ReadAsStringAsync());
+                Console.WriteLine(authResult.ToString());
                 MessageBox.Show($"Sign-in successful! Token: {authResult.Token}");
             }
             catch (Exception ex)
@@ -60,7 +91,16 @@ namespace authtest
                 MessageBox.Show($"Error: {ex.Message}");
             }
         }
-}
 
-public record AuthResult(string Token, string UserType, string FullName);
+        private static int GetRandomUnusedPort()
+        {
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            listener.Stop();
+            return port;
+        }
+    }
+
+    public record AuthResult(string Token, string UserType, string FullName);
 }
