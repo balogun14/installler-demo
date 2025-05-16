@@ -25,7 +25,7 @@ namespace authtest
                 // Step 1: Get a random unused port for redirect URI
                 var port = GetRandomUnusedPort();
                 var redirectUri = $"http://127.0.0.1:{port}/";
-                var deviceId = Guid.NewGuid().ToString();
+                var deviceId = "42c0cb37-f80d-4ab1-95b4-d19466e1fd68";
 
                 // Step 2: Call google-signin endpoint
                 var response = await _client.GetAsync($"{ApiBaseUrl}/api/InstallerAuth/google-signin?deviceId={deviceId}&redirectUri={Uri.EscapeDataString(redirectUri)}");
@@ -81,8 +81,13 @@ namespace authtest
                     RedirectUri = returnedRedirectUri 
                 });
                 //TODO: Fix the parsing of token
+                var options = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                };
+                var some = await callbackResponse.Content.ReadAsStringAsync();
+                var authResult = JsonSerializer.Deserialize<AuthResult>(some, options);
 
-                var authResult = JsonSerializer.Deserialize<AuthResult>(await callbackResponse.Content.ReadAsStringAsync());
                 Console.WriteLine(authResult.ToString());
                 MessageBox.Show($"Sign-in successful! Token: {authResult.Token}");
             }
@@ -102,5 +107,5 @@ namespace authtest
         }
     }
 
-    public record AuthResult(string Token, string UserType, string FullName);
+  
 }
